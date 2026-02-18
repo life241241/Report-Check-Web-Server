@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import requests
 import re
 import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 import time
@@ -48,6 +50,17 @@ MUNICIPALITIES = [
     {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
     {"name": "מ.מ אורנית", "rashut": "920043", "report_type": "1"},
 ]
+
+
+MUNI_COLORS = [
+    "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+    "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
+    "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
+    "#0ea5e9", "#3b82f6", "#2563eb", "#4f46e5", "#7c3aed",
+    "#9333ea", "#c026d3",
+]
+
+stream_executor = ThreadPoolExecutor(max_workers=5)
 
 
 class CheckRequest(BaseModel):
@@ -173,7 +186,71 @@ def root():
 
 @app.get("/municipalities")
 def get_municipalities():
-    return {"municipalities": [m["name"] for m in MUNICIPALITIES], "total": len(MUNICIPALITIES)}
+    result = []
+    for i, m in enumerate(MUNICIPALITIES):
+        name = m["name"]
+        short = (name
+                 .replace("עיריית ", "")
+                 .replace("מועצה מקומית ", "")
+                 .replace("מועצה אזורית ", "")
+                 .replace("מ.א ", "").replace("מ.א. ", "")
+                 .replace("מ.מ ", "").replace("מ.מ. ", "")
+                 .replace("רשות ", ""))[:2]
+        result.append({
+            "name": name,
+            "id": m["rashut"],
+            "initials": short,
+            "color": MUNI_COLORS[i % len(MUNI_COLORS)],
+        })
+    return {"municipalities": result, "total": len(result)}
+
+
+@app.post("/check-stream")
+async def check_stream(req: CheckRequest):
+    if not req.id_number.strip() or not req.car_number.strip():
+        raise HTTPException(status_code=400, detail="id_number and car_number are required")
+
+    async def event_generator():
+        yield f"data: {json.dumps({'type': 'start', 'total': len(MUNICIPALITIES)}, ensure_ascii=False)}\n\n"
+
+        loop = asyncio.get_event_loop()
+        results = []
+
+        async def check_one(m):
+            try:
+                return await loop.run_in_executor(
+                    stream_executor,
+                    check_municipality,
+                    m["name"], m["rashut"], m["report_type"],
+                    req.id_number.strip(), req.car_number.strip(),
+                    m.get("qcode")
+                )
+            except Exception as e:
+                return {"name": m["name"], "status": "failed", "error": str(e)}
+
+        tasks = [asyncio.create_task(check_one(m)) for m in MUNICIPALITIES]
+
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            results.append(result)
+            yield f"data: {json.dumps({'type': 'result', 'result': result}, ensure_ascii=False)}\n\n"
+
+        summary = {
+            "clean": sum(1 for r in results if r["status"] == "clean"),
+            "fine": sum(1 for r in results if r["status"] == "fine"),
+            "failed": sum(1 for r in results if r["status"] == "failed"),
+        }
+        yield f"data: {json.dumps({'type': 'done', 'summary': summary}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @app.post("/check")
