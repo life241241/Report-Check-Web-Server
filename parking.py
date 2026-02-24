@@ -35,7 +35,7 @@ MUNICIPALITIES = [
     {"name": "מ.א עמק יזרעאל", "rashut": "920015", "report_type": "1"},
     {"name": "עיריית שדרות", "rashut": "920057", "report_type": "1"},
     {"name": "עיריית יהוד - מונוסון", "rashut": "920011", "report_type": "1"},
-    {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
+    # {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
     {"name": "מ.מ אורנית", "rashut": "920043", "report_type": "1"},
 ]
 

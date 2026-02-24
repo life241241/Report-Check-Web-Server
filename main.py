@@ -47,7 +47,7 @@ MUNICIPALITIES = [
     {"name": "מ.א עמק יזרעאל", "rashut": "920015", "report_type": "1"},
     {"name": "עיריית שדרות", "rashut": "920057", "report_type": "1"},
     {"name": "עיריית יהוד - מונוסון", "rashut": "920011", "report_type": "1"},
-    {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
+    # {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
     {"name": "מ.מ אורנית", "rashut": "920043", "report_type": "1"},
 ]
 
@@ -73,7 +73,7 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
         step2_url = (
             f"{base}/step2.aspx?StrFind={car_number}&ReportNo={id_number}"
             f"&status=GetDetails&ReportType={report_type}&DochC={doch_c}"
-            f"&SwQR={sw_qr}&language={language}&Rashut={rashut}&SwOrder=1"
+            f"&SwQR=0&language={language}&Rashut={rashut}&SwOrder=2"
         )
         r = session.get(step2_url, headers={**HEADERS, "Referer": f"{base}/step1.aspx"}, timeout=45)
         if r.status_code != 200:
@@ -110,7 +110,8 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
 
         if fines:
             return {"status": "fine", "count": len(fines), "amount": f"{total:.2f}" if total > 0 else "ראה פרטים", "fines": fines}
-        return {"status": "fine", "count": doch_c, "amount": "לא ידוע (C>0, step2 ריק)"}
+        # step2 returned no data rows — the C value was system-wide, not personal
+        return {"status": "clean"}
     except Exception as e:
         return {"status": "fine", "count": doch_c, "amount": f"לא ידוע (step2 שגיאה: {e})"}
 
@@ -148,7 +149,7 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
 
         r = session.post(f"{base}/Check_Report.aspx", data={
             "status": "Check_Report", "StrFind": car_number, "ReportNo": id_number,
-            "ReportType": report_type, "tokenCaptcha": "", "SwShow": "", "SwOrder": "1"
+            "ReportType": report_type, "tokenCaptcha": "", "SwShow": "", "SwOrder": "2"
         }, headers={
             **HEADERS, "Referer": f"{base}/step1.aspx", "Origin": base,
             "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest",
@@ -167,6 +168,10 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         if itra_sum:
             return {"name": name, "status": "fine", "count": count, "amount": itra_sum, "person_name": data.get("Nm", "")}
 
+        # Some municipalities (e.g. Beit Shemesh) return a system-wide C
+        # with empty personal fields. We must always check step2 to know
+        # if there are real fines — step2 returns actual rows only for
+        # fines that belong to this person.
         result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language)
         result["name"] = name
         return result
