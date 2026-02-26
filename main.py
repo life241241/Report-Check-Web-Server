@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 import time
 
-from scan_logger import log_scan, get_logs, get_stats
+from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats
 
 app = FastAPI(title="Parking Fines API", version="1.0.0")
 
@@ -392,14 +392,9 @@ def scan_logs(
 @app.get("/scan-logs/{log_id}")
 def scan_log_detail(log_id: int):
     """Return a single scan log with full results."""
-    rows = get_logs(limit=1, offset=0)
-    # Direct DB query for specific ID
-    from scan_logger import _get_conn
-    with _get_conn() as conn:
-        row = conn.execute("SELECT * FROM scan_logs WHERE id = ?", (log_id,)).fetchone()
-    if not row:
+    entry = get_log_by_id(log_id)
+    if not entry:
         raise HTTPException(status_code=404, detail="Log not found")
-    entry = dict(row)
     if entry.get("results_json"):
         entry["results"] = json.loads(entry["results_json"])
         del entry["results_json"]
