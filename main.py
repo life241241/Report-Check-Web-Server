@@ -1,7 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 import requests
 import re
 import asyncio
@@ -9,6 +10,8 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 import time
+
+from scan_logger import log_scan, get_logs, get_stats
 
 app = FastAPI(title="Parking Fines API", version="1.0.0")
 
@@ -62,10 +65,15 @@ MUNI_COLORS = [
 
 stream_executor = ThreadPoolExecutor(max_workers=5)
 
+# Toggle: show total open fines count per municipality
+SHOW_TOTAL_OPEN_FINES = True
+
 
 class CheckRequest(BaseModel):
     id_number: str
     car_number: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 def _get_fines_from_step2(session, base, car_number, id_number, report_type, doch_c, rashut, sw_qr, language):
@@ -98,13 +106,25 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
             price_el = row.find(class_="price")
             if price_el:
                 fine["price_display"] = price_el.get_text(strip=True)
+
+            # Parse all cell divs in order matching column layout:
+            # [checkbox, number, date, time, location, amount, comments, view]
             cell_divs = row.find_all("div", class_="cell")
             for div in cell_divs:
                 text = div.get_text(strip=True)
+                classes = div.get("class", [])
                 if re.match(r"\d{2}/\d{2}/\d{4}", text):
                     fine["date"] = text
                 elif re.match(r"\d{2}:\d{2}$", text):
                     fine["time"] = text
+                elif div.get("id") == "Street" or ("w4" in classes and "nomobile" in classes and "location" not in fine and "price" not in classes):
+                    # Location column (w4 nomobile, first occurrence)
+                    if text and "location" not in fine and not div.find(class_="price"):
+                        fine["location"] = text
+                elif "w4" in classes and "nomobile" in classes and "location" in fine and "comments" not in fine:
+                    # Comments column (w4 nomobile, second occurrence after location)
+                    if text:
+                        fine["comments"] = text
             if fine:
                 fines.append(fine)
 
@@ -114,6 +134,13 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
         return {"status": "clean"}
     except Exception as e:
         return {"status": "fine", "count": doch_c, "amount": f"לא ידוע (step2 שגיאה: {e})"}
+
+
+def _build_payment_url(rashut, report_type, qcode=None):
+    base = "https://www.doh.co.il"
+    if qcode:
+        return f"{base}/Default.aspx?a={qcode}"
+    return f"{base}/Default.aspx?ReportType={report_type}&Rashut={rashut}"
 
 
 def check_municipality(name, rashut, report_type, id_number, car_number, qcode=None):
@@ -162,11 +189,34 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         count = data.get("C", 0)
         itra_sum = data.get("ItraSum", "")
 
+        # total_open_fines = system-wide open fines count for this municipality
+        # Only available for qcode municipalities (e.g. Beit Shemesh) where
+        # C is the system-wide total. For non-qcode municipalities, C is the
+        # personal count, so we don't expose it as total_open_fines.
+        total_open = count if (SHOW_TOTAL_OPEN_FINES and qcode) else None
+
+        payment_url = _build_payment_url(rashut, report_type, qcode)
+
         if count == 0:
-            return {"name": name, "status": "clean"}
+            result = {"name": name, "status": "clean"}
+            if total_open is not None:
+                result["total_open_fines"] = total_open
+            return result
 
         if itra_sum:
-            return {"name": name, "status": "fine", "count": count, "amount": itra_sum, "person_name": data.get("Nm", "")}
+            # Even when ItraSum is available, fetch step2 for detailed per-fine breakdown
+            # (location, comments, individual amounts)
+            step2_result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language)
+            if step2_result.get("status") == "fine" and step2_result.get("fines"):
+                result = {"name": name, "status": "fine", "count": step2_result["count"],
+                          "amount": itra_sum, "person_name": data.get("Nm", ""),
+                          "fines": step2_result["fines"], "payment_url": payment_url}
+            else:
+                result = {"name": name, "status": "fine", "count": count, "amount": itra_sum,
+                          "person_name": data.get("Nm", ""), "payment_url": payment_url}
+            if total_open is not None:
+                result["total_open_fines"] = total_open
+            return result
 
         # Some municipalities (e.g. Beit Shemesh) return a system-wide C
         # with empty personal fields. We must always check step2 to know
@@ -174,6 +224,10 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         # fines that belong to this person.
         result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language)
         result["name"] = name
+        if result.get("status") == "fine":
+            result["payment_url"] = payment_url
+        if total_open is not None:
+            result["total_open_fines"] = total_open
         return result
 
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
@@ -211,9 +265,12 @@ def get_municipalities():
 
 
 @app.post("/check-stream")
-async def check_stream(req: CheckRequest):
+async def check_stream(req: CheckRequest, request: Request):
     if not req.id_number.strip() or not req.car_number.strip():
         raise HTTPException(status_code=400, detail="id_number and car_number are required")
+
+    client_ip = request.client.host if request.client else ""
+    user_agent = request.headers.get("user-agent", "")
 
     async def event_generator():
         yield f"data: {json.dumps({'type': 'start', 'total': len(MUNICIPALITIES)}, ensure_ascii=False)}\n\n"
@@ -247,6 +304,18 @@ async def check_stream(req: CheckRequest):
         }
         yield f"data: {json.dumps({'type': 'done', 'summary': summary}, ensure_ascii=False)}\n\n"
 
+        # Log the completed scan
+        try:
+            log_scan(
+                client_ip, req.id_number.strip(), req.car_number.strip(),
+                results, summary,
+                user_agent=user_agent,
+                latitude=req.latitude,
+                longitude=req.longitude,
+            )
+        except Exception:
+            pass  # never break the response over logging
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -259,9 +328,12 @@ async def check_stream(req: CheckRequest):
 
 
 @app.post("/check")
-def check_all(req: CheckRequest):
+def check_all(req: CheckRequest, request: Request):
     if not req.id_number.strip() or not req.car_number.strip():
         raise HTTPException(status_code=400, detail="id_number and car_number are required")
+
+    client_ip = request.client.host if request.client else ""
+    user_agent = request.headers.get("user-agent", "")
 
     results = []
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -287,4 +359,54 @@ def check_all(req: CheckRequest):
         "failed": sum(1 for r in results if r["status"] == "failed"),
     }
 
+    # Log the completed scan
+    try:
+        log_scan(
+            client_ip, req.id_number.strip(), req.car_number.strip(),
+            results, summary,
+            user_agent=user_agent,
+            latitude=req.latitude,
+            longitude=req.longitude,
+        )
+    except Exception:
+        pass  # never break the response over logging
+
     return {"results": results, "summary": summary}
+
+
+# ─── Scan Logs Endpoints ───────────────────────────────────
+
+@app.get("/scan-logs")
+def scan_logs(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """Return recent scan log entries (newest first)."""
+    logs = get_logs(limit=limit, offset=offset)
+    # Strip full results JSON from the list view for brevity
+    for log in logs:
+        log.pop("results_json", None)
+    return {"logs": logs, "count": len(logs)}
+
+
+@app.get("/scan-logs/{log_id}")
+def scan_log_detail(log_id: int):
+    """Return a single scan log with full results."""
+    rows = get_logs(limit=1, offset=0)
+    # Direct DB query for specific ID
+    from scan_logger import _get_conn
+    with _get_conn() as conn:
+        row = conn.execute("SELECT * FROM scan_logs WHERE id = ?", (log_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Log not found")
+    entry = dict(row)
+    if entry.get("results_json"):
+        entry["results"] = json.loads(entry["results_json"])
+        del entry["results_json"]
+    return entry
+
+
+@app.get("/scan-stats")
+def scan_stats():
+    """Return aggregate scan statistics."""
+    return get_stats()
