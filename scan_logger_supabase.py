@@ -5,22 +5,12 @@ Table: scan_logs (in Supabase)
 ──────────────────────────────────────────────────────────
 id              BIGSERIAL PRIMARY KEY
 created_at      TIMESTAMPTZ (auto, server default)
-timestamp       TEXT    (ISO 8601, UTC)
-ip              TEXT    (client IP)
-id_number       TEXT    (full ID number)
-car_number      TEXT    (full car number)
-clean           INTEGER (count of clean municipalities)
-fine            INTEGER (count of municipalities with fines)
-failed          INTEGER (count of failed municipalities)
-total_fines     INTEGER (total individual fine items found)
-total_amount    TEXT    (total ₪ amount, if available)
-fine_munis      TEXT    (comma-separated municipality names with fines)
-fine_addresses  TEXT    (comma-separated addresses from fines)
-user_agent      TEXT    (browser / platform info)
-platform        TEXT    (parsed: iOS / Android / Windows / macOS / Linux / Other)
-latitude        DOUBLE PRECISION (user geolocation, if provided)
-longitude       DOUBLE PRECISION (user geolocation, if provided)
-results_json    TEXT    (full JSON dump of all results)
+vehicle         JSONB  {car_number, manufacturer, model}
+user_info       JSONB  {id_number, first_name, last_name, email}
+fines           JSONB  {total_fines, total_amount, clean_count, fine_count,
+                        failed_count, municipalities: [...]}
+check_metadata  JSONB  {timestamp, ip, platform, user_agent,
+                        location: {latitude, longitude}, raw_results: [...]}
 ──────────────────────────────────────────────────────────
 
 Environment variables (set in .env or hosting platform):
@@ -28,7 +18,6 @@ Environment variables (set in .env or hosting platform):
     SUPABASE_SERVICE_KEY  — service_role secret key
 """
 
-import json
 import os
 from datetime import datetime, timezone
 from supabase import create_client, Client
@@ -78,46 +67,120 @@ def log_scan(
     latitude: float | None = None,
     longitude: float | None = None,
 ):
-    """Log a completed scan to Supabase."""
-    # Calculate totals + collect fine details
+    """Log a completed scan to Supabase with structured JSONB columns."""
+    # ── Build municipalities list for fines ──
+    municipalities: list[dict] = []
     total_fines = 0
     total_amount = 0.0
-    fine_munis: list[str] = []
-    fine_addresses: list[str] = []
 
     for r in results:
         if r.get("status") == "fine":
             total_fines += r.get("count", 0)
-            fine_munis.append(r.get("name", ""))
             try:
                 total_amount += float(r.get("amount", 0))
             except (ValueError, TypeError):
                 pass
-            for f in r.get("fines", []):
-                loc = f.get("location", "")
-                if loc:
-                    fine_addresses.append(f"{r.get('name', '')}: {loc}")
+            muni: dict = {
+                "name": r.get("name", ""),
+                "count": r.get("count", 0),
+            }
+            if r.get("fines"):
+                muni["fines"] = r["fines"]
+            if r.get("payment_url"):
+                muni["payment_url"] = r["payment_url"]
+            if r.get("person_name"):
+                muni["person_name"] = r["person_name"]
+            municipalities.append(muni)
 
-    row = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ip": ip or "",
-        "id_number": id_number.strip(),
+    # ── vehicle ──
+    vehicle = {
         "car_number": car_number.strip(),
-        "clean": summary.get("clean", 0),
-        "fine": summary.get("fine", 0),
-        "failed": summary.get("failed", 0),
-        "total_fines": total_fines,
-        "total_amount": f"{total_amount:.2f}" if total_amount > 0 else "",
-        "fine_munis": ", ".join(fine_munis) if fine_munis else "",
-        "fine_addresses": " | ".join(fine_addresses) if fine_addresses else "",
-        "user_agent": user_agent,
-        "platform": _parse_platform(user_agent),
-        "latitude": latitude,
-        "longitude": longitude,
-        "results_json": json.dumps(results, ensure_ascii=False),
     }
 
-    _supabase.table(TABLE).insert(row).execute()
+    # ── user_info ──
+    user_info = {
+        "id_number": id_number.strip(),
+    }
+
+    # ── fines ──
+    fines = {
+        "total_fines": total_fines,
+        "total_amount": total_amount if total_amount > 0 else 0,
+        "clean_count": summary.get("clean", 0),
+        "fine_count": summary.get("fine", 0),
+        "failed_count": summary.get("failed", 0),
+        "municipalities": municipalities,
+    }
+
+    # ── check_metadata ──
+    location = None
+    if latitude is not None and longitude is not None:
+        location = {"latitude": latitude, "longitude": longitude}
+
+    check_metadata = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ip": ip or "",
+        "platform": _parse_platform(user_agent),
+        "user_agent": user_agent,
+        "location": location,
+        "raw_results": results,
+    }
+
+    row = {
+        "vehicle": vehicle,
+        "user_info": user_info,
+        "fines": fines,
+        "check_metadata": check_metadata,
+    }
+
+    result = _supabase.table(TABLE).insert(row).execute()
+    if result.data:
+        return result.data[0].get("id")
+    return None
+
+
+def update_scan_subscriber(
+    scan_id: int,
+    email: str,
+    first_name: str = "",
+    last_name: str = "",
+) -> dict | None:
+    """Merge subscriber info into the user_info JSONB of a scan log row."""
+    # Read current user_info to preserve id_number
+    current = _supabase.table(TABLE).select("user_info").eq("id", scan_id).execute()
+    user_info = current.data[0].get("user_info", {}) if current.data else {}
+    user_info["email"] = email.strip().lower()
+    user_info["first_name"] = first_name.strip() if first_name else ""
+    user_info["last_name"] = last_name.strip() if last_name else ""
+
+    result = (
+        _supabase.table(TABLE)
+        .update({"user_info": user_info})
+        .eq("id", scan_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def update_scan_vehicle(
+    scan_id: int,
+    manufacturer: str = "",
+    model: str = "",
+) -> dict | None:
+    """Merge vehicle manufacturer & model into the vehicle JSONB."""
+    # Read current vehicle to preserve car_number
+    current = _supabase.table(TABLE).select("vehicle").eq("id", scan_id).execute()
+    vehicle = current.data[0].get("vehicle", {}) if current.data else {}
+    vehicle["manufacturer"] = manufacturer.strip() if manufacturer else ""
+    vehicle["model"] = model.strip() if model else ""
+
+    result = (
+        _supabase.table(TABLE)
+        .update({"vehicle": vehicle})
+        .eq("id", scan_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
 
 
 def get_logs(limit: int = 100, offset: int = 0) -> list[dict]:
@@ -143,26 +206,45 @@ def get_log_by_id(log_id: int) -> dict | None:
     return result.data[0] if result.data else None
 
 
-def get_stats() -> dict:
-    """Return aggregate statistics.
+SUBSCRIBERS_TABLE = "subscribers"
 
-    Supabase REST API doesn't support raw SQL aggregates directly,
-    so we fetch counts via simple queries.
+
+def save_subscriber(email: str, first_name: str = "", last_name: str = "") -> dict:
+    """Save a new newsletter subscriber to Supabase.
+
+    Table: subscribers
+    ──────────────────────────────────────────────────────────
+    id              BIGSERIAL PRIMARY KEY
+    created_at      TIMESTAMPTZ (auto, server default)
+    email           TEXT NOT NULL UNIQUE
+    first_name      TEXT
+    last_name       TEXT
+    ──────────────────────────────────────────────────────────
     """
-    # Total scans
-    all_rows = _supabase.table(TABLE).select("id, car_number, fine, total_fines", count="exact").execute()
+    row = {
+        "email": email.strip().lower(),
+        "first_name": first_name.strip() if first_name else "",
+        "last_name": last_name.strip() if last_name else "",
+    }
+    result = _supabase.table(SUBSCRIBERS_TABLE).insert(row).execute()
+    return result.data[0] if result.data else row
+
+
+def get_stats() -> dict:
+    """Return aggregate statistics."""
+    all_rows = _supabase.table(TABLE).select("id, vehicle, fines", count="exact").execute()
     total_scans = all_rows.count or 0
 
-    # Unique cars
     car_numbers = set()
     total_with_fines = 0
     total_fine_items = 0
     for row in all_rows.data:
-        car_numbers.add(row.get("car_number"))
-        fine_val = row.get("fine") or 0
-        if fine_val > 0:
+        v = row.get("vehicle") or {}
+        car_numbers.add(v.get("car_number", ""))
+        f = row.get("fines") or {}
+        if (f.get("fine_count") or 0) > 0:
             total_with_fines += 1
-        total_fine_items += row.get("total_fines") or 0
+        total_fine_items += f.get("total_fines") or 0
 
     return {
         "total_scans": total_scans,

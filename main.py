@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 import time
 
-from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats
+from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats, save_subscriber, update_scan_subscriber, update_scan_vehicle
 
 app = FastAPI(title="Parking Fines API", version="1.0.0")
 
@@ -76,7 +76,65 @@ class CheckRequest(BaseModel):
     longitude: Optional[float] = None
 
 
-def _get_fines_from_step2(session, base, car_number, id_number, report_type, doch_c, rashut, sw_qr, language):
+class SubscribeRequest(BaseModel):
+    email: str
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    scan_id: Optional[int] = None
+
+
+def _get_fine_images(session, base, car_number, report_type, language, sw_show, rashut, report_c, sw_hide_pic_parking, sw_hide_pic_general):
+    """Call step2_show.aspx for a single fine to get image URLs."""
+    try:
+        # Check if images should be hidden for this report type
+        if report_type in ("1",) and str(sw_hide_pic_parking) == "1":
+            return []
+        if report_type not in ("1",) and str(sw_hide_pic_general) == "1":
+            return []
+
+        import base64
+        str_find_encoded = "1" + base64.b64encode(car_number.encode()).decode() + "2"
+
+        r = session.post(f"{base}/step2_show.aspx", data={
+            "status": "view",
+            "ReportC": report_c,
+            "StrFind": str_find_encoded,
+            "ReportType": report_type,
+            "language": language,
+            "SwShow": sw_show or "",
+        }, headers={
+            **HEADERS,
+            "Referer": f"{base}/step2.aspx",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }, timeout=15)
+
+        if r.status_code != 200:
+            return []
+
+        res = r.json()
+        pic_found = int(res.get("PicFound", 0))
+        report_kod = res.get("ReportKod", "")
+        d_date = res.get("DDate", "")
+
+        if pic_found <= 0 or not report_kod:
+            return []
+
+        image_urls = []
+        for i in range(1, pic_found + 1):
+            url = (
+                f"https://ws.comax.co.il/Hanita/Parking/Image.aspx?"
+                f"SwHanita=1&CustomerCode={rashut}"
+                f"&ReportNo={report_kod}&ReportC={report_c}"
+                f"&ReportD={d_date}&ImageNumber={i}"
+            )
+            image_urls.append(url)
+        return image_urls
+    except Exception:
+        return []
+
+
+def _get_fines_from_step2(session, base, car_number, id_number, report_type, doch_c, rashut, sw_qr, language, param_resp=None):
     try:
         step2_url = (
             f"{base}/step2.aspx?StrFind={car_number}&ReportNo={id_number}"
@@ -103,9 +161,17 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
                     total += price
                 except ValueError:
                     pass
+                # Extract ReportC from checkbox name attribute
+                if checkbox.get("name"):
+                    fine["_report_c"] = checkbox["name"]
             price_el = row.find(class_="price")
             if price_el:
                 fine["price_display"] = price_el.get_text(strip=True)
+
+            # Extract ReportC from the view link (data-class attribute)
+            view_link = row.find("a", attrs={"data-class": True})
+            if view_link:
+                fine["_report_c"] = view_link["data-class"]
 
             # Parse all cell divs in order matching column layout:
             # [checkbox, number, date, time, location, amount, comments, view]
@@ -127,6 +193,26 @@ def _get_fines_from_step2(session, base, car_number, id_number, report_type, doc
                         fine["comments"] = text
             if fine:
                 fines.append(fine)
+
+        # Fetch images for each fine that has a ReportC
+        if fines and param_resp:
+            sw_hide_pic_parking = param_resp.get("SwHidePicParking", "0")
+            sw_hide_pic_general = param_resp.get("SwHidePicGeneral", "0")
+            sw_show = param_resp.get("SwShow", "")
+
+            for fine in fines:
+                report_c = fine.pop("_report_c", None)
+                if report_c:
+                    image_urls = _get_fine_images(
+                        session, base, car_number, report_type, language,
+                        sw_show, rashut, report_c, sw_hide_pic_parking, sw_hide_pic_general
+                    )
+                    if image_urls:
+                        fine["image_urls"] = image_urls
+        else:
+            # Remove internal _report_c keys even if we couldn't fetch images
+            for fine in fines:
+                fine.pop("_report_c", None)
 
         if fines:
             return {"status": "fine", "count": len(fines), "amount": f"{total:.2f}" if total > 0 else "ראה פרטים", "fines": fines}
@@ -162,6 +248,7 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
             **HEADERS, "Referer": page_url, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded"
         }, timeout=15)
 
+        param_resp = None
         try:
             param_resp = r_param.json()
             actual_rashut = str(param_resp.get("Rashut", rashut))
@@ -206,7 +293,7 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         if itra_sum:
             # Even when ItraSum is available, fetch step2 for detailed per-fine breakdown
             # (location, comments, individual amounts)
-            step2_result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language)
+            step2_result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
             if step2_result.get("status") == "fine" and step2_result.get("fines"):
                 result = {"name": name, "status": "fine", "count": step2_result["count"],
                           "amount": itra_sum, "person_name": data.get("Nm", ""),
@@ -222,7 +309,7 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         # with empty personal fields. We must always check step2 to know
         # if there are real fines — step2 returns actual rows only for
         # fines that belong to this person.
-        result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language)
+        result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
         result["name"] = name
         if result.get("status") == "fine":
             result["payment_url"] = payment_url
@@ -264,6 +351,25 @@ def get_municipalities():
     return {"municipalities": result, "total": len(result)}
 
 
+from fastapi.responses import Response
+
+@app.get("/fine-image")
+def proxy_fine_image(url: str = Query(..., description="Full image URL from ws.comax.co.il")):
+    """Proxy fine images to avoid CORS issues in the browser."""
+    if not url.startswith("https://ws.comax.co.il/"):
+        raise HTTPException(status_code=400, detail="Invalid image URL")
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail="Image not found")
+        content_type = r.headers.get("Content-Type", "image/jpeg")
+        return Response(content=r.content, media_type=content_type, headers={
+            "Cache-Control": "public, max-age=86400",
+        })
+    except requests.exceptions.RequestException:
+        raise HTTPException(status_code=502, detail="Failed to fetch image")
+
+
 @app.post("/check-stream")
 async def check_stream(req: CheckRequest, request: Request):
     if not req.id_number.strip() or not req.car_number.strip():
@@ -302,11 +408,11 @@ async def check_stream(req: CheckRequest, request: Request):
             "fine": sum(1 for r in results if r["status"] == "fine"),
             "failed": sum(1 for r in results if r["status"] == "failed"),
         }
-        yield f"data: {json.dumps({'type': 'done', 'summary': summary}, ensure_ascii=False)}\n\n"
 
-        # Log the completed scan
+        # Log the completed scan and get the scan ID
+        scan_id = None
         try:
-            log_scan(
+            scan_id = log_scan(
                 client_ip, req.id_number.strip(), req.car_number.strip(),
                 results, summary,
                 user_agent=user_agent,
@@ -315,6 +421,8 @@ async def check_stream(req: CheckRequest, request: Request):
             )
         except Exception:
             pass  # never break the response over logging
+
+        yield f"data: {json.dumps({'type': 'done', 'summary': summary, 'scan_id': scan_id}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -383,21 +491,22 @@ def scan_logs(
 ):
     """Return recent scan log entries (newest first)."""
     logs = get_logs(limit=limit, offset=offset)
-    # Strip full results JSON from the list view for brevity
+    # Strip raw_results from list view for brevity
     for log in logs:
-        log.pop("results_json", None)
+        meta = log.get("check_metadata") or {}
+        meta.pop("raw_results", None)
     return {"logs": logs, "count": len(logs)}
 
 
 @app.get("/scan-logs/{log_id}")
 def scan_log_detail(log_id: int):
-    """Return a single scan log with full results."""
+    """Return a single scan log with full structured data."""
     entry = get_log_by_id(log_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Log not found")
-    if entry.get("results_json"):
-        entry["results"] = json.loads(entry["results_json"])
-        del entry["results_json"]
+    # Add a clear subscribed flag
+    user_info = entry.get("user_info") or {}
+    entry["subscribed"] = bool(user_info.get("email"))
     return entry
 
 
@@ -405,3 +514,46 @@ def scan_log_detail(log_id: int):
 def scan_stats():
     """Return aggregate scan statistics."""
     return get_stats()
+
+
+class VehicleUpdateRequest(BaseModel):
+    manufacturer: Optional[str] = ""
+    model: Optional[str] = ""
+
+
+@app.patch("/scan-logs/{scan_id}/vehicle")
+def update_vehicle(scan_id: int, req: VehicleUpdateRequest):
+    """Attach vehicle manufacturer & model to a scan log row."""
+    try:
+        update_scan_vehicle(scan_id, req.manufacturer or "", req.model or "")
+        return {"status": "ok"}
+    except Exception:
+        raise HTTPException(status_code=500, detail="שגיאה בעדכון פרטי רכב")
+
+
+@app.post("/subscribe")
+def subscribe(req: SubscribeRequest):
+    """Subscribe a user to email updates and link to scan log."""
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="כתובת מייל לא תקינה")
+    try:
+        # 1. Save to subscribers table (unique emails)
+        try:
+            save_subscriber(email, req.first_name or "", req.last_name or "")
+        except Exception as e:
+            error_msg = str(e)
+            if not ("duplicate" in error_msg.lower() or "unique" in error_msg.lower() or "23505" in error_msg):
+                raise
+
+        # 2. Update the scan_log row with subscriber info
+        if req.scan_id:
+            update_scan_subscriber(
+                req.scan_id, email,
+                req.first_name or "",
+                req.last_name or "",
+            )
+
+        return {"status": "ok", "message": "נרשמת בהצלחה!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="שגיאה בשמירת הנתונים")
