@@ -29,30 +29,42 @@ HEADERS = {
     "Accept-Language": "he,en;q=0.9",
 }
 
-MUNICIPALITIES = [
-    {"name": "עיריית בית שמש", "rashut": "1621", "report_type": "1", "qcode": "1621.7973811.1486367.1"},
-    {"name": "עיריית רמת גן", "rashut": "186111", "report_type": "1"},
-    {"name": "עיריית מודיעין עילית", "rashut": "920094", "report_type": "1"},
-    {"name": "עיריית גבעתיים", "rashut": "920044", "report_type": "1"},
-    {"name": "מ.א דרום השרון", "rashut": "920058", "report_type": "1"},
-    {"name": "עיריית הרצליה", "rashut": "920039", "report_type": "1"},
-    {"name": "מועצה אזורית גוש עציון", "rashut": "920041", "report_type": "1"},
-    {"name": "עיריית כפר קאסם", "rashut": "920061", "report_type": "1"},
-    {"name": "מועצה מקומית בית דגן", "rashut": "920016", "report_type": "1"},
-    {"name": "מ.מ. מזכרת בתיה", "rashut": "920037", "report_type": "1"},
-    {"name": "מועצה מקומית שוהם", "rashut": "920038", "report_type": "1"},
-    {"name": "עיריית מעלה אדומים", "rashut": "836160", "report_type": "1"},
-    {"name": "עיריית גני תקווה", "rashut": "920010", "report_type": "1"},
-    {"name": "עיריית מצפה רמון", "rashut": "920053", "report_type": "1"},
-    {"name": "עיריית ערד", "rashut": "920021", "report_type": "1"},
-    {"name": "עיריית טירת כרמל", "rashut": "920056", "report_type": "1"},
-    {"name": "עיריית כוכב יאיר-צור יגאל", "rashut": "920051", "report_type": "1"},
-    {"name": "מ.א עמק יזרעאל", "rashut": "920015", "report_type": "1"},
-    {"name": "עיריית שדרות", "rashut": "920057", "report_type": "1"},
-    {"name": "עיריית יהוד - מונוסון", "rashut": "920011", "report_type": "1"},
-    # {"name": "רשות שדות התעופה", "rashut": "920070", "report_type": "1"},
-    {"name": "מ.מ אורנית", "rashut": "920043", "report_type": "1"},
-]
+# Load municipalities from authorities_results.json + special entries
+def _load_municipalities():
+    """Build MUNICIPALITIES list from authorities JSON file and special entries."""
+    import os
+    json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "authorities_results.json")
+    with open(json_path, "r", encoding="utf-8") as f:
+        authorities = json.load(f)
+
+    # Build lookup by rashut code
+    muni_list = []
+    seen_rashut = set()
+    for a in authorities:
+        rashut_str = str(a["rashut"])
+        muni_list.append({
+            "name": a["name"],
+            "rashut": rashut_str,
+            "report_type": "1",
+            "address": a.get("address", ""),
+            "phone": a.get("phone", ""),
+        })
+        seen_rashut.add(rashut_str)
+
+    # Special entries not in the JSON (different rashut code ranges)
+    special_entries = [
+        {"name": "עיריית בית שמש", "rashut": "1621", "report_type": "1", "qcode": "1621.7973811.1486367.1", "address": "", "phone": ""},
+        {"name": "עיריית רמת גן", "rashut": "186111", "report_type": "1", "address": "", "phone": ""},
+        {"name": "עיריית מעלה אדומים", "rashut": "836160", "report_type": "1", "address": "", "phone": ""},
+    ]
+    for s in special_entries:
+        if s["rashut"] not in seen_rashut:
+            muni_list.append(s)
+            seen_rashut.add(s["rashut"])
+
+    return muni_list
+
+MUNICIPALITIES = _load_municipalities()
 
 
 MUNI_COLORS = [
@@ -63,7 +75,7 @@ MUNI_COLORS = [
     "#9333ea", "#c026d3",
 ]
 
-stream_executor = ThreadPoolExecutor(max_workers=5)
+stream_executor = ThreadPoolExecutor(max_workers=10)
 
 # Toggle: show total open fines count per municipality
 SHOW_TOTAL_OPEN_FINES = True
@@ -325,9 +337,21 @@ def check_municipality(name, rashut, report_type, id_number, car_number, qcode=N
         return {"name": name, "status": "failed", "error": str(e)}
 
 
+def _enrich_result(result, rashut):
+    """Add address/phone metadata to a check result."""
+    meta = _MUNI_META.get(rashut, {})
+    result["address"] = meta.get("address", "")
+    result["phone"] = meta.get("phone", "")
+    return result
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Parking Fines API is running"}
+
+
+# Build a lookup from rashut -> {address, phone} for enriching results
+_MUNI_META = {m["rashut"]: {"address": m.get("address", ""), "phone": m.get("phone", "")} for m in MUNICIPALITIES}
 
 
 @app.get("/municipalities")
@@ -339,14 +363,22 @@ def get_municipalities():
                  .replace("עיריית ", "")
                  .replace("מועצה מקומית ", "")
                  .replace("מועצה אזורית ", "")
+                 .replace("מועצה איזורית ", "")
                  .replace("מ.א ", "").replace("מ.א. ", "")
+                 .replace("מ.א.", "")
                  .replace("מ.מ ", "").replace("מ.מ. ", "")
-                 .replace("רשות ", ""))[:2]
+                 .replace("מוא\"ז ", "")
+                 .replace("רשות ", "")
+                 .replace("תאגיד המים ", "")
+                 .replace("איגוד ערים ", "")
+                 .replace("אשכול ", ""))[:2]
         result.append({
             "name": name,
             "id": m["rashut"],
             "initials": short,
             "color": MUNI_COLORS[i % len(MUNI_COLORS)],
+            "address": m.get("address", ""),
+            "phone": m.get("phone", ""),
         })
     return {"municipalities": result, "total": len(result)}
 
@@ -398,8 +430,12 @@ async def check_stream(req: CheckRequest, request: Request):
 
         tasks = [asyncio.create_task(check_one(m)) for m in MUNICIPALITIES]
 
+        # Build name -> rashut lookup for enrichment
+        name_to_rashut = {m["name"]: m["rashut"] for m in MUNICIPALITIES}
+
         for coro in asyncio.as_completed(tasks):
             result = await coro
+            _enrich_result(result, name_to_rashut.get(result.get("name", ""), ""))
             results.append(result)
             yield f"data: {json.dumps({'type': 'result', 'result': result}, ensure_ascii=False)}\n\n"
 
@@ -456,6 +492,7 @@ def check_all(req: CheckRequest, request: Request):
         for future in futures:
             try:
                 result = future.result(timeout=60)
+                _enrich_result(result, futures[future]["rashut"])
                 results.append(result)
             except Exception as e:
                 m = futures[future]
