@@ -23,16 +23,23 @@ from datetime import datetime, timezone
 from supabase import create_client, Client
 
 # ─── Supabase connection ─────────────────────────────────
-# ⚠️  IMPORTANT: In production, set these as environment variables
-#     in your Railway dashboard. Never commit real keys to git.
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL",
-    "https://qncujyrppnvkrzquwfpx.supabase.co",
-)
-SUPABASE_KEY = os.environ.get(
-    "SUPABASE_SERVICE_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuY3VqeXJwcG52a3J6cXV3ZnB4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjEwNzMxNywiZXhwIjoyMDg3NjgzMzE3fQ.RwjIjzy4EDpokiQR4AyTVkeGtKzZ8WlWn3R6HfcuHjM",
-)
+# In production: set via Railway dashboard environment variables.
+# In local dev:  create a .env file (already gitignored) with:
+#   SUPABASE_URL=https://xxx.supabase.co
+#   SUPABASE_SERVICE_KEY=your-key-here
+
+# Load .env file if present (local dev only)
+from dotenv import load_dotenv
+load_dotenv()
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "Missing SUPABASE_URL or SUPABASE_SERVICE_KEY. "
+        "Set them as environment variables or in a .env file."
+    )
 
 _supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
