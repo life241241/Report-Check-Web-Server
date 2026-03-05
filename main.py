@@ -12,12 +12,15 @@ from bs4 import BeautifulSoup
 import time
 
 from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats, save_subscriber, update_scan_subscriber, update_scan_vehicle
+import os
 
 app = FastAPI(title="Parking Fines API", version="1.0.0")
 
+# CORS — configurable via ALLOWED_ORIGINS env var (comma-separated), defaults to "*"
+_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,7 +36,11 @@ HEADERS = {
 def _load_municipalities():
     """Build MUNICIPALITIES list from authorities JSON file and special entries."""
     import os
-    json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "authorities_results.json")
+    # Look in current directory first (Docker/production), then parent (local dev)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(current_dir, "authorities_results.json")
+    if not os.path.exists(json_path):
+        json_path = os.path.join(os.path.dirname(current_dir), "authorities_results.json")
     with open(json_path, "r", encoding="utf-8") as f:
         authorities = json.load(f)
 

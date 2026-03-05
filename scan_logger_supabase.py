@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from supabase import create_client, Client
 
 # ─── Supabase connection ─────────────────────────────────
+# ⚠️  IMPORTANT: In production, set these as environment variables
+#     in your Railway dashboard. Never commit real keys to git.
 SUPABASE_URL = os.environ.get(
     "SUPABASE_URL",
     "https://qncujyrppnvkrzquwfpx.supabase.co",

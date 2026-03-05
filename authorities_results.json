@@ -1,0 +1,590 @@
+[
+  {
+    "rashut": 920000,
+    "name": "חניתה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920000&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920009,
+    "name": "מועצה מקומית קרני שומר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920009&language=he",
+    "address": "שד רחבעם זאבי 1",
+    "phone": "09-7940308"
+  },
+  {
+    "rashut": 920010,
+    "name": "עיריית גני תקווה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920010&language=he",
+    "address": "רח'''' הגליל 48",
+    "phone": "03-5349032"
+  },
+  {
+    "rashut": 920011,
+    "name": "עיריית יהוד - מונוסון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920011&language=he",
+    "address": "זאב ויזנהויז 1",
+    "phone": "03-6322567"
+  },
+  {
+    "rashut": 920012,
+    "name": "עיריית עפולה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920012&language=he",
+    "address": "הולנד 1",
+    "phone": ""
+  },
+  {
+    "rashut": 920013,
+    "name": "מועצה מקומית אזור",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920013&language=he",
+    "address": "יצחק שדה 18",
+    "phone": "03-6545450"
+  },
+  {
+    "rashut": 920014,
+    "name": "שעב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920014&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920015,
+    "name": "מ.א עמק יזרעאל",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920015&language=he",
+    "address": "ת.ד 90000",
+    "phone": "046520600"
+  },
+  {
+    "rashut": 920016,
+    "name": "מועצה מקומית בית דגן",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920016&language=he",
+    "address": "שדרות מנחם בגין 9",
+    "phone": "03-9602144"
+  },
+  {
+    "rashut": 920017,
+    "name": "עיריית באר שבע",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920017&language=he",
+    "address": "העיר העתיקה 33",
+    "phone": ""
+  },
+  {
+    "rashut": 920019,
+    "name": "סיטיפס-רכבת",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920019&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920020,
+    "name": "מועצה אזורית תמר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920020&language=he",
+    "address": "נווה זוהר  ד.נ.",
+    "phone": "08-6688877"
+  },
+  {
+    "rashut": 920021,
+    "name": "עיריית ערד",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920021&language=he",
+    "address": "הפלמ\"ח 6 ת.ד 100",
+    "phone": "08-9951666"
+  },
+  {
+    "rashut": 920022,
+    "name": "גן יבנה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920022&language=he",
+    "address": "הרצל 1 תד 45 מיקוד 70",
+    "phone": "08-6225501"
+  },
+  {
+    "rashut": 920023,
+    "name": "מועצה אזורית לב השרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920023&language=he",
+    "address": "צומת בני דרור",
+    "phone": "097960270"
+  },
+  {
+    "rashut": 920024,
+    "name": "מועצה איזורית עמק המעי",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920024&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920025,
+    "name": "מועצה מקומית קדימה צור",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920025&language=he",
+    "address": "דרך לב השרון 1",
+    "phone": "09-7931430"
+  },
+  {
+    "rashut": 920030,
+    "name": "מועצה איזורית חבל מודיעין",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920030&language=he",
+    "address": "עמק איילון 161 ת.ד 92",
+    "phone": "033732900"
+  },
+  {
+    "rashut": 920031,
+    "name": "מ.א.חוף השרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920031&language=he",
+    "address": "דואר נע",
+    "phone": ""
+  },
+  {
+    "rashut": 920033,
+    "name": "נווה מדבר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920033&language=he",
+    "address": "העצמאות 47",
+    "phone": "08-6230758"
+  },
+  {
+    "rashut": 920035,
+    "name": "מועצה מקומית פרדס חנה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920035&language=he",
+    "address": "דרך הבנים 20 ת.ד 1022",
+    "phone": "0779779841"
+  },
+  {
+    "rashut": 920036,
+    "name": "המועצה האזורית עמק חפר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920036&language=he",
+    "address": "ליד מדרשת רופין",
+    "phone": "09-8981578"
+  },
+  {
+    "rashut": 920037,
+    "name": "מ.מ. מזכרת בתיה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920037&language=he",
+    "address": "שדרות אליהו 4",
+    "phone": "08-9371153"
+  },
+  {
+    "rashut": 920038,
+    "name": "שוהם",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920038&language=he",
+    "address": "האודם 63",
+    "phone": "039724724"
+  },
+  {
+    "rashut": 920039,
+    "name": "עיריית הרצליה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920039&language=he",
+    "address": "השרון 29",
+    "phone": "09-9509223"
+  },
+  {
+    "rashut": 920041,
+    "name": "מוא\"ז גוש עציון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920041&language=he",
+    "address": "אלון שבות ד.נ. צפון י",
+    "phone": "02-9939977"
+  },
+  {
+    "rashut": 920043,
+    "name": "מ.מ אורנית",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920043&language=he",
+    "address": "מ.מסחרי ד.נ אפריים",
+    "phone": "03-9360465"
+  },
+  {
+    "rashut": 920044,
+    "name": "עיריית גבעתיים",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920044&language=he",
+    "address": "המעורר 11 גבעתיים",
+    "phone": "035722427"
+  },
+  {
+    "rashut": 920045,
+    "name": "מ.א חבל יבנה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920045&language=he",
+    "address": "ת.ד 90 גדרה",
+    "phone": "08-8622114"
+  },
+  {
+    "rashut": 920047,
+    "name": "מועצה מקומית קריית ארב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920047&language=he",
+    "address": "ת.ד 15",
+    "phone": "029969549"
+  },
+  {
+    "rashut": 920049,
+    "name": "תאגיד המים מי חדרה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920049&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920050,
+    "name": "מועצה אזורית שדות דן",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920050&language=he",
+    "address": "הרבי מילובביץ",
+    "phone": "0773647947"
+  },
+  {
+    "rashut": 920051,
+    "name": "כוכב יאיר-צור יגאל",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920051&language=he",
+    "address": "ת.ד 100",
+    "phone": "09-7640206"
+  },
+  {
+    "rashut": 920052,
+    "name": "מועצה אזורית גן רוה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920052&language=he",
+    "address": "עיינות ד.נ. עמק שורק",
+    "phone": "089408230"
+  },
+  {
+    "rashut": 920053,
+    "name": "מצפה רמון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920053&language=he",
+    "address": "נחל סלעית  2 א''''",
+    "phone": "08-6596222"
+  },
+  {
+    "rashut": 920056,
+    "name": "עיריית טירת כרמל",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920056&language=he",
+    "address": "ששת הימים 1",
+    "phone": "046774597"
+  },
+  {
+    "rashut": 920057,
+    "name": "עיריית שדרות",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920057&language=he",
+    "address": "הנחלים 8",
+    "phone": "0723390805"
+  },
+  {
+    "rashut": 920058,
+    "name": "מ.א דרום השרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920058&language=he",
+    "address": "ת.ד 500",
+    "phone": "0723390845"
+  },
+  {
+    "rashut": 920060,
+    "name": "ביתר עילית",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920060&language=he",
+    "address": "רבי עקיבא 38",
+    "phone": ""
+  },
+  {
+    "rashut": 920061,
+    "name": "כפר קאסם",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920061&language=he",
+    "address": "הזית 10",
+    "phone": "03-5281397"
+  },
+  {
+    "rashut": 920062,
+    "name": "אשדוד",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920062&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920063,
+    "name": "הגליל התחתון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920063&language=he",
+    "address": "ד.נ גליל תחתון כדורי",
+    "phone": "0778903908"
+  },
+  {
+    "rashut": 920066,
+    "name": "מועצה מקומית עוספיא",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920066&language=he",
+    "address": "אבו  חושי",
+    "phone": ""
+  },
+  {
+    "rashut": 920068,
+    "name": "מועצה אזורית רמת נגב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920068&language=he",
+    "address": "ד.נ. חלוצה",
+    "phone": "08-6564111"
+  },
+  {
+    "rashut": 920069,
+    "name": "השירותים הווטרינרים גו",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920069&language=he",
+    "address": "צומת מסובים ת.ד  966",
+    "phone": "036312222"
+  },
+  {
+    "rashut": 920070,
+    "name": "רשות שדות התעופה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920070&language=he",
+    "address": "ת\"ד  753  אור יהודה",
+    "phone": "0773647948"
+  },
+  {
+    "rashut": 920071,
+    "name": "מבואות חרמון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920071&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920072,
+    "name": "קרית גת",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920072&language=he",
+    "address": "כיכר פז 2 קרית גת",
+    "phone": "08-6878356"
+  },
+  {
+    "rashut": 920073,
+    "name": "מועצה אזורית שומרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920073&language=he",
+    "address": "אזוה\"ת",
+    "phone": "039066454"
+  },
+  {
+    "rashut": 920074,
+    "name": "בית אריה -עופרים",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920074&language=he",
+    "address": "הזית 1",
+    "phone": "089127000"
+  },
+  {
+    "rashut": 920075,
+    "name": "אשכול גליל מזרחי",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920075&language=he",
+    "address": "צומת כח ד.נ גליל עליו",
+    "phone": ""
+  },
+  {
+    "rashut": 920076,
+    "name": "מועצה אזורית גזר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920076&language=he",
+    "address": "בית חשמנאי",
+    "phone": "089274065"
+  },
+  {
+    "rashut": 920077,
+    "name": "מועצה אזורית מטה בנימי",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920077&language=he",
+    "address": "",
+    "phone": "029977257"
+  },
+  {
+    "rashut": 920078,
+    "name": "שדות נגב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920078&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920079,
+    "name": "מועצה אזורית הגלבוע",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920079&language=he",
+    "address": "ד.נ הגלבוע",
+    "phone": ""
+  },
+  {
+    "rashut": 920080,
+    "name": "מועצה אזורית נחל שורק",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920080&language=he",
+    "address": "הראל 2",
+    "phone": "08634288"
+  },
+  {
+    "rashut": 920081,
+    "name": "מ.א חוף אשקלון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920081&language=he",
+    "address": "ת.ד 9000",
+    "phone": ""
+  },
+  {
+    "rashut": 920082,
+    "name": "ראשון לציון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920082&language=he",
+    "address": "זבוטינסקי",
+    "phone": ""
+  },
+  {
+    "rashut": 920083,
+    "name": "מועצה מקומית אבן יהודה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920083&language=he",
+    "address": "המייסדים 53",
+    "phone": "0778805200"
+  },
+  {
+    "rashut": 920084,
+    "name": "קריית אונו",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920084&language=he",
+    "address": "הכלנית 5",
+    "phone": "037362376"
+  },
+  {
+    "rashut": 920085,
+    "name": "מועצה מקומית מגדל",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920085&language=he",
+    "address": "רח' נוף ארבל",
+    "phone": "04-6720659"
+  },
+  {
+    "rashut": 920086,
+    "name": "אשכול רשויות נגב מערבי",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920086&language=he",
+    "address": "יוסף סמילו 8",
+    "phone": ""
+  },
+  {
+    "rashut": 920087,
+    "name": "מ.א הגליל העליון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920087&language=he",
+    "address": "ד.נ גליל עליון",
+    "phone": ""
+  },
+  {
+    "rashut": 920088,
+    "name": "עיריית רמת השרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920088&language=he",
+    "address": "העבודה 5",
+    "phone": "035489358"
+  },
+  {
+    "rashut": 920089,
+    "name": "חריש",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920089&language=he",
+    "address": "הגפן 72",
+    "phone": ""
+  },
+  {
+    "rashut": 920090,
+    "name": "איגוד ערים אשכול בית ה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920090&language=he",
+    "address": "משגב 16 כרמיאל",
+    "phone": "0773647929"
+  },
+  {
+    "rashut": 920091,
+    "name": "עיריית קרית מלאכי",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920091&language=he",
+    "address": "זבוטינסקי  20",
+    "phone": "08-8500893"
+  },
+  {
+    "rashut": 920092,
+    "name": "מ.א מטה יהודה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920092&language=he",
+    "address": "ד.נ שמשון מיקוד 99700",
+    "phone": "0773647929"
+  },
+  {
+    "rashut": 920093,
+    "name": "יהוד מונוסון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920093&language=he",
+    "address": "סעדיה חתוכה 43",
+    "phone": "03-5716253"
+  },
+  {
+    "rashut": 920094,
+    "name": "מודיעין עילית",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920094&language=he",
+    "address": "שער המלך 4",
+    "phone": "0777408018"
+  },
+  {
+    "rashut": 920095,
+    "name": "מועצה אזורית מעלה יוסף",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920095&language=he",
+    "address": "גרנות הגליל ד.נ.גליל",
+    "phone": "049105521"
+  },
+  {
+    "rashut": 920096,
+    "name": "עיריית חולון-אכיפה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920096&language=he",
+    "address": "חיים ויצמן 58",
+    "phone": ""
+  },
+  {
+    "rashut": 920097,
+    "name": "מועצה אזורית לב השרון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920097&language=he",
+    "address": "ד. נ תל מונד",
+    "phone": "09-7960200"
+  },
+  {
+    "rashut": 920098,
+    "name": "מועצה אזורית בני שמעון",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920098&language=he",
+    "address": "צומת בית קמה  ד. נ הנ",
+    "phone": "0773647929"
+  },
+  {
+    "rashut": 920099,
+    "name": "מועצה אזורית מרחבים",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920099&language=he",
+    "address": "צומת גילת",
+    "phone": "089926160"
+  },
+  {
+    "rashut": 920100,
+    "name": "תאגיד המים מי רהט בע\"מ",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920100&language=he",
+    "address": "ת.ד 1133 מרכז מסחרי",
+    "phone": "08-6707070"
+  },
+  {
+    "rashut": 920101,
+    "name": "תאגיד המים נווה מדבר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920101&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920104,
+    "name": "מועצה מקומית טורעאן",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920104&language=he",
+    "address": "אבן סינא",
+    "phone": "046414000"
+  },
+  {
+    "rashut": 920105,
+    "name": "מועצה אזורית מטה אשר",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920105&language=he",
+    "address": "ד.נ גליל מערבי",
+    "phone": ""
+  },
+  {
+    "rashut": 920106,
+    "name": "עיריית באר יעקב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920106&language=he",
+    "address": "זבוטינסקי 2",
+    "phone": ""
+  },
+  {
+    "rashut": 920107,
+    "name": "מועצה מקומית צור הדסה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920107&language=he",
+    "address": "דפנה 2",
+    "phone": ""
+  },
+  {
+    "rashut": 920108,
+    "name": "מועצה מקומית אפרת",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920108&language=he",
+    "address": "מעלה כפר עציון",
+    "phone": ""
+  },
+  {
+    "rashut": 920109,
+    "name": "עיריית תל אביב",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920109&language=he",
+    "address": "",
+    "phone": ""
+  },
+  {
+    "rashut": 920111,
+    "name": "מועצה מקומית אלקנה",
+    "url": "https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920111&language=he",
+    "address": "הר גלעד 2",
+    "phone": "039151205"
+  }
+]
