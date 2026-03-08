@@ -88,10 +88,37 @@ stream_executor = ThreadPoolExecutor(max_workers=10)
 # Toggle: show total open fines count per municipality
 SHOW_TOTAL_OPEN_FINES = True
 
-# ─── Cloudflare Worker proxy for doh.co.il ───────────────────
-# Set DOH_PROXY_URL to your deployed worker URL, e.g. https://doh-proxy.<you>.workers.dev
-DOH_PROXY_URL = os.environ.get("DOH_PROXY_URL", "")
-DOH_PROXY_SECRET = os.environ.get("DOH_PROXY_SECRET", "")
+# ─── Proxy configuration for doh.co.il ───────────────────────
+# Preferred: DOH_PROXY_URLS as comma-separated list of proxy URLs.
+# Backward compatible: DOH_PROXY_URL (single URL).
+_proxy_urls_raw = os.environ.get("DOH_PROXY_URLS", "").strip()
+if _proxy_urls_raw:
+    DOH_PROXY_URLS = [u.strip() for u in _proxy_urls_raw.split(",") if u.strip()]
+else:
+    _single = os.environ.get("DOH_PROXY_URL", "").strip()
+    DOH_PROXY_URLS = [_single] if _single else []
+
+# Optional comma-separated secrets aligned by index to DOH_PROXY_URLS.
+# If only one secret is provided, it is used for all proxies.
+_proxy_secrets_raw = os.environ.get("DOH_PROXY_SECRETS", "").strip()
+if _proxy_secrets_raw:
+    _parts = [s.strip() for s in _proxy_secrets_raw.split(",")]
+    if len(_parts) == 1 and DOH_PROXY_URLS:
+        DOH_PROXY_SECRETS = _parts * len(DOH_PROXY_URLS)
+    else:
+        DOH_PROXY_SECRETS = _parts
+else:
+    _single_secret = os.environ.get("DOH_PROXY_SECRET", "").strip()
+    DOH_PROXY_SECRETS = ([_single_secret] * len(DOH_PROXY_URLS)) if _single_secret else ([""] * len(DOH_PROXY_URLS))
+
+
+def _proxy_candidates():
+    """Return list of (url, secret) proxy candidates."""
+    candidates = []
+    for i, url in enumerate(DOH_PROXY_URLS):
+        secret = DOH_PROXY_SECRETS[i] if i < len(DOH_PROXY_SECRETS) else ""
+        candidates.append((url, secret))
+    return candidates
 
 
 class _ProxiedResponse:
@@ -335,24 +362,35 @@ def _build_payment_url(rashut, report_type, qcode=None):
 
 def check_municipality(name, rashut, report_type, id_number, car_number, qcode=None):
     base = "https://www.doh.co.il"
-    use_proxy = bool(DOH_PROXY_URL)
-    session = _ProxySession(DOH_PROXY_URL, DOH_PROXY_SECRET) if use_proxy else requests.Session()
+    proxies = _proxy_candidates()
+    use_proxy = bool(proxies)
 
     # Small random delay to avoid burst patterns that trigger rate-limiting
     import random
     time.sleep(random.uniform(0.1, 0.6))
 
-    try:
-        result = _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
-        return result
-    except Exception as e:
-        # If proxy failed, automatically fallback to direct connection
-        if use_proxy:
+    # Try each proxy candidate first
+    if use_proxy:
+        last_proxy_err = None
+        for proxy_url, proxy_secret in proxies:
             try:
-                session = requests.Session()
+                session = _ProxySession(proxy_url, proxy_secret)
                 return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
-            except Exception as e2:
-                return {"name": name, "status": "failed", "error": f"proxy+direct failed: {e2}"}
+            except Exception as e:
+                last_proxy_err = e
+
+        # All proxies failed -> fallback to direct
+        try:
+            session = requests.Session()
+            return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
+        except Exception as e2:
+            return {"name": name, "status": "failed", "error": f"all proxies failed ({last_proxy_err}); direct failed: {e2}"}
+
+    # No proxy configured -> direct only
+    try:
+        session = requests.Session()
+        return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
+    except Exception as e:
         return {"name": name, "status": "failed", "error": str(e)}
 
 
@@ -449,7 +487,8 @@ def root():
 def health_doh():
     """Diagnostic: test connectivity to doh.co.il — direct and via proxy."""
     import time as _t
-    result = {"proxy_configured": bool(DOH_PROXY_URL)}
+    proxies = _proxy_candidates()
+    result = {"proxy_configured": bool(proxies), "proxy_count": len(proxies)}
 
     # Direct test
     start = _t.time()
@@ -459,15 +498,32 @@ def health_doh():
     except Exception as e:
         result["direct"] = {"reachable": False, "error": str(e), "elapsed_s": round(_t.time() - start, 2)}
 
-    # Proxy test (if configured)
-    if DOH_PROXY_URL:
-        start = _t.time()
-        try:
-            s = _ProxySession(DOH_PROXY_URL, DOH_PROXY_SECRET)
-            r = s.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
-            result["proxy"] = {"reachable": True, "status_code": r.status_code, "elapsed_s": round(_t.time() - start, 2)}
-        except Exception as e:
-            result["proxy"] = {"reachable": False, "error": str(e), "elapsed_s": round(_t.time() - start, 2)}
+    # Proxy tests (all configured candidates)
+    if proxies:
+        proxy_results = []
+        for i, (proxy_url, proxy_secret) in enumerate(proxies):
+            start = _t.time()
+            try:
+                s = _ProxySession(proxy_url, proxy_secret)
+                r = s.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
+                proxy_results.append({
+                    "index": i,
+                    "url": proxy_url,
+                    "reachable": True,
+                    "status_code": r.status_code,
+                    "elapsed_s": round(_t.time() - start, 2),
+                })
+            except Exception as e:
+                proxy_results.append({
+                    "index": i,
+                    "url": proxy_url,
+                    "reachable": False,
+                    "error": str(e),
+                    "elapsed_s": round(_t.time() - start, 2),
+                })
+        result["proxies"] = proxy_results
+        # Keep legacy key for compatibility with existing checks/alerts
+        result["proxy"] = proxy_results[0]
 
     return result
 
