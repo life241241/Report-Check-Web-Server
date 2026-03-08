@@ -357,6 +357,20 @@ def root():
     return {"status": "ok", "message": "Parking Fines API is running"}
 
 
+@app.get("/health/doh")
+def health_doh():
+    """Diagnostic: test connectivity to doh.co.il from this server."""
+    import time as _t
+    start = _t.time()
+    try:
+        r = requests.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
+        elapsed = round(_t.time() - start, 2)
+        return {"reachable": True, "status_code": r.status_code, "elapsed_s": elapsed}
+    except Exception as e:
+        elapsed = round(_t.time() - start, 2)
+        return {"reachable": False, "error": str(e), "elapsed_s": elapsed}
+
+
 # Build a lookup from rashut -> {address, phone} for enriching results
 _MUNI_META = {m["rashut"]: {"address": m.get("address", ""), "phone": m.get("phone", "")} for m in MUNICIPALITIES}
 
