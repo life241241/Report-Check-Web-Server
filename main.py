@@ -9,7 +9,6 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
-from urllib.parse import urlencode
 import time
 
 from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats, save_subscriber, update_scan_subscriber, update_scan_vehicle
@@ -87,117 +86,6 @@ stream_executor = ThreadPoolExecutor(max_workers=10)
 
 # Toggle: show total open fines count per municipality
 SHOW_TOTAL_OPEN_FINES = True
-
-# ─── Proxy configuration for doh.co.il ───────────────────────
-# Preferred: DOH_PROXY_URLS as comma-separated list of proxy URLs.
-# Backward compatible: DOH_PROXY_URL (single URL).
-_proxy_urls_raw = os.environ.get("DOH_PROXY_URLS", "").strip()
-if _proxy_urls_raw:
-    DOH_PROXY_URLS = [u.strip() for u in _proxy_urls_raw.split(",") if u.strip()]
-else:
-    _single = os.environ.get("DOH_PROXY_URL", "").strip()
-    DOH_PROXY_URLS = [_single] if _single else []
-
-# Optional comma-separated secrets aligned by index to DOH_PROXY_URLS.
-# If only one secret is provided, it is used for all proxies.
-_proxy_secrets_raw = os.environ.get("DOH_PROXY_SECRETS", "").strip()
-if _proxy_secrets_raw:
-    _parts = [s.strip() for s in _proxy_secrets_raw.split(",")]
-    if len(_parts) == 1 and DOH_PROXY_URLS:
-        DOH_PROXY_SECRETS = _parts * len(DOH_PROXY_URLS)
-    else:
-        DOH_PROXY_SECRETS = _parts
-else:
-    _single_secret = os.environ.get("DOH_PROXY_SECRET", "").strip()
-    DOH_PROXY_SECRETS = ([_single_secret] * len(DOH_PROXY_URLS)) if _single_secret else ([""] * len(DOH_PROXY_URLS))
-
-
-def _proxy_candidates():
-    """Return list of (url, secret) proxy candidates."""
-    candidates = []
-    for i, url in enumerate(DOH_PROXY_URLS):
-        secret = DOH_PROXY_SECRETS[i] if i < len(DOH_PROXY_SECRETS) else ""
-        candidates.append((url, secret))
-    return candidates
-
-
-class _ProxiedResponse:
-    """Lightweight stand-in for requests.Response."""
-    def __init__(self, status_code, text):
-        self.status_code = status_code
-        self.text = text
-
-    def json(self):
-        return json.loads(self.text)
-
-
-class _ProxySession:
-    """Drop-in replacement for requests.Session() that routes every request
-    through a Cloudflare Worker proxy so the outgoing IP is different."""
-
-    def __init__(self, proxy_url, proxy_secret=""):
-        self._proxy_url = proxy_url
-        self._proxy_secret = proxy_secret
-        self._cookies = {}
-
-    # ── public interface (same as requests.Session) ──────────
-    def get(self, url, **kw):  return self._do("GET", url, **kw)
-    def post(self, url, **kw): return self._do("POST", url, **kw)
-
-    # ── internals ────────────────────────────────────────────
-    def _do(self, method, url, **kw):
-        headers = dict(kw.get("headers", {}))
-
-        # Inject session cookies
-        if self._cookies:
-            extra = "; ".join(f"{k}={v}" for k, v in self._cookies.items())
-            existing = headers.get("Cookie", "")
-            headers["Cookie"] = f"{existing}; {extra}".strip("; ") if existing else extra
-
-        payload = {"url": url, "method": method, "headers": headers}
-
-        data = kw.get("data")
-        if data:
-            payload["body"] = urlencode(data) if isinstance(data, dict) else str(data)
-
-        proxy_headers = {"Content-Type": "application/json"}
-        if self._proxy_secret:
-            proxy_headers["X-Proxy-Secret"] = self._proxy_secret
-
-        timeout = kw.get("timeout", 30)
-
-        # Worker round-trip can be slower than direct HTTP because it includes
-        # an extra network hop + upstream fetch. Give it more budget and retry once.
-        d = None
-        last_err = None
-        for attempt in range(2):
-            try:
-                r = requests.post(
-                    self._proxy_url,
-                    json=payload,
-                    headers=proxy_headers,
-                    timeout=timeout + 45,
-                )
-                d = r.json()
-                break
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                last_err = e
-                if attempt == 0:
-                    time.sleep(0.5)
-                    continue
-                raise
-
-        if d is None:
-            raise last_err or Exception("Proxy request failed")
-
-        # Update session cookies from Set-Cookie headers
-        for sc in d.get("set_cookies", []):
-            part = sc.split(";")[0]
-            if "=" in part:
-                name, _, value = part.partition("=")
-                self._cookies[name.strip()] = value.strip()
-
-        return _ProxiedResponse(d.get("status", 502), d.get("body", ""))
 
 
 class CheckRequest(BaseModel):
@@ -362,31 +250,11 @@ def _build_payment_url(rashut, report_type, qcode=None):
 
 def check_municipality(name, rashut, report_type, id_number, car_number, qcode=None):
     base = "https://www.doh.co.il"
-    proxies = _proxy_candidates()
-    use_proxy = bool(proxies)
 
     # Small random delay to avoid burst patterns that trigger rate-limiting
     import random
     time.sleep(random.uniform(0.1, 0.6))
 
-    # Try each proxy candidate first
-    if use_proxy:
-        last_proxy_err = None
-        for proxy_url, proxy_secret in proxies:
-            try:
-                session = _ProxySession(proxy_url, proxy_secret)
-                return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
-            except Exception as e:
-                last_proxy_err = e
-
-        # All proxies failed -> fallback to direct
-        try:
-            session = requests.Session()
-            return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
-        except Exception as e2:
-            return {"name": name, "status": "failed", "error": f"all proxies failed ({last_proxy_err}); direct failed: {e2}"}
-
-    # No proxy configured -> direct only
     try:
         session = requests.Session()
         return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
@@ -481,51 +349,6 @@ def _enrich_result(result, rashut):
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Parking Fines API is running"}
-
-
-@app.get("/health/doh")
-def health_doh():
-    """Diagnostic: test connectivity to doh.co.il — direct and via proxy."""
-    import time as _t
-    proxies = _proxy_candidates()
-    result = {"proxy_configured": bool(proxies), "proxy_count": len(proxies)}
-
-    # Direct test
-    start = _t.time()
-    try:
-        r = requests.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
-        result["direct"] = {"reachable": True, "status_code": r.status_code, "elapsed_s": round(_t.time() - start, 2)}
-    except Exception as e:
-        result["direct"] = {"reachable": False, "error": str(e), "elapsed_s": round(_t.time() - start, 2)}
-
-    # Proxy tests (all configured candidates)
-    if proxies:
-        proxy_results = []
-        for i, (proxy_url, proxy_secret) in enumerate(proxies):
-            start = _t.time()
-            try:
-                s = _ProxySession(proxy_url, proxy_secret)
-                r = s.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
-                proxy_results.append({
-                    "index": i,
-                    "url": proxy_url,
-                    "reachable": True,
-                    "status_code": r.status_code,
-                    "elapsed_s": round(_t.time() - start, 2),
-                })
-            except Exception as e:
-                proxy_results.append({
-                    "index": i,
-                    "url": proxy_url,
-                    "reachable": False,
-                    "error": str(e),
-                    "elapsed_s": round(_t.time() - start, 2),
-                })
-        result["proxies"] = proxy_results
-        # Keep legacy key for compatibility with existing checks/alerts
-        result["proxy"] = proxy_results[0]
-
-    return result
 
 
 # Build a lookup from rashut -> {address, phone} for enriching results
