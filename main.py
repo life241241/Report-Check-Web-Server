@@ -138,8 +138,30 @@ class _ProxySession:
             proxy_headers["X-Proxy-Secret"] = self._proxy_secret
 
         timeout = kw.get("timeout", 30)
-        r = requests.post(self._proxy_url, json=payload, headers=proxy_headers, timeout=timeout + 10)
-        d = r.json()
+
+        # Worker round-trip can be slower than direct HTTP because it includes
+        # an extra network hop + upstream fetch. Give it more budget and retry once.
+        d = None
+        last_err = None
+        for attempt in range(2):
+            try:
+                r = requests.post(
+                    self._proxy_url,
+                    json=payload,
+                    headers=proxy_headers,
+                    timeout=timeout + 45,
+                )
+                d = r.json()
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                last_err = e
+                if attempt == 0:
+                    time.sleep(0.5)
+                    continue
+                raise
+
+        if d is None:
+            raise last_err or Exception("Proxy request failed")
 
         # Update session cookies from Set-Cookie headers
         for sc in d.get("set_cookies", []):
