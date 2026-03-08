@@ -9,6 +9,7 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
+from urllib.parse import urlencode
 import time
 
 from scan_logger_supabase import log_scan, get_logs, get_log_by_id, get_stats, save_subscriber, update_scan_subscriber, update_scan_vehicle
@@ -86,6 +87,68 @@ stream_executor = ThreadPoolExecutor(max_workers=10)
 
 # Toggle: show total open fines count per municipality
 SHOW_TOTAL_OPEN_FINES = True
+
+# ─── Cloudflare Worker proxy for doh.co.il ───────────────────
+# Set DOH_PROXY_URL to your deployed worker URL, e.g. https://doh-proxy.<you>.workers.dev
+DOH_PROXY_URL = os.environ.get("DOH_PROXY_URL", "")
+DOH_PROXY_SECRET = os.environ.get("DOH_PROXY_SECRET", "")
+
+
+class _ProxiedResponse:
+    """Lightweight stand-in for requests.Response."""
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        return json.loads(self.text)
+
+
+class _ProxySession:
+    """Drop-in replacement for requests.Session() that routes every request
+    through a Cloudflare Worker proxy so the outgoing IP is different."""
+
+    def __init__(self, proxy_url, proxy_secret=""):
+        self._proxy_url = proxy_url
+        self._proxy_secret = proxy_secret
+        self._cookies = {}
+
+    # ── public interface (same as requests.Session) ──────────
+    def get(self, url, **kw):  return self._do("GET", url, **kw)
+    def post(self, url, **kw): return self._do("POST", url, **kw)
+
+    # ── internals ────────────────────────────────────────────
+    def _do(self, method, url, **kw):
+        headers = dict(kw.get("headers", {}))
+
+        # Inject session cookies
+        if self._cookies:
+            extra = "; ".join(f"{k}={v}" for k, v in self._cookies.items())
+            existing = headers.get("Cookie", "")
+            headers["Cookie"] = f"{existing}; {extra}".strip("; ") if existing else extra
+
+        payload = {"url": url, "method": method, "headers": headers}
+
+        data = kw.get("data")
+        if data:
+            payload["body"] = urlencode(data) if isinstance(data, dict) else str(data)
+
+        proxy_headers = {"Content-Type": "application/json"}
+        if self._proxy_secret:
+            proxy_headers["X-Proxy-Secret"] = self._proxy_secret
+
+        timeout = kw.get("timeout", 30)
+        r = requests.post(self._proxy_url, json=payload, headers=proxy_headers, timeout=timeout + 10)
+        d = r.json()
+
+        # Update session cookies from Set-Cookie headers
+        for sc in d.get("set_cookies", []):
+            part = sc.split(";")[0]
+            if "=" in part:
+                name, _, value = part.partition("=")
+                self._cookies[name.strip()] = value.strip()
+
+        return _ProxiedResponse(d.get("status", 502), d.get("body", ""))
 
 
 class CheckRequest(BaseModel):
@@ -250,98 +313,101 @@ def _build_payment_url(rashut, report_type, qcode=None):
 
 def check_municipality(name, rashut, report_type, id_number, car_number, qcode=None):
     base = "https://www.doh.co.il"
-    session = requests.Session()
+    use_proxy = bool(DOH_PROXY_URL)
+    session = _ProxySession(DOH_PROXY_URL, DOH_PROXY_SECRET) if use_proxy else requests.Session()
+
+    # Small random delay to avoid burst patterns that trigger rate-limiting
+    import random
+    time.sleep(random.uniform(0.1, 0.6))
+
     try:
-        if qcode:
-            page_url = f"{base}/Default.aspx?a={qcode}"
-        else:
-            page_url = f"{base}/Default.aspx?ReportType={report_type}&Rashut={rashut}"
-        session.get(page_url, headers=HEADERS, timeout=15)
+        result = _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
+        return result
+    except Exception as e:
+        # If proxy failed, automatically fallback to direct connection
+        if use_proxy:
+            try:
+                session = requests.Session()
+                return _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode)
+            except Exception as e2:
+                return {"name": name, "status": "failed", "error": f"proxy+direct failed: {e2}"}
+        return {"name": name, "status": "failed", "error": str(e)}
 
-        if qcode:
-            param_data = {"action": "getData", "a": qcode}
-        else:
-            param_data = {"action": "getData", "ReportType": report_type, "Rashut": rashut, "language": "", "SwShow": "", "TK": ""}
 
-        r_param = session.post(f"{base}/Menu/setParam.aspx", data=param_data, headers={
-            **HEADERS, "Referer": page_url, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded"
-        }, timeout=15)
+def _do_check(session, base, name, rashut, report_type, id_number, car_number, qcode=None):
+    if qcode:
+        page_url = f"{base}/Default.aspx?a={qcode}"
+    else:
+        page_url = f"{base}/Default.aspx?ReportType={report_type}&Rashut={rashut}"
+    session.get(page_url, headers=HEADERS, timeout=15)
 
-        param_resp = None
-        try:
-            param_resp = r_param.json()
-            actual_rashut = str(param_resp.get("Rashut", rashut))
-            sw_qr = str(param_resp.get("SwQR", "0"))
-            language = str(param_resp.get("language", "he"))
-        except:
-            actual_rashut = rashut
-            sw_qr = "1" if qcode else "0"
-            language = "he"
+    if qcode:
+        param_data = {"action": "getData", "a": qcode}
+    else:
+        param_data = {"action": "getData", "ReportType": report_type, "Rashut": rashut, "language": "", "SwShow": "", "TK": ""}
 
-        session.get(f"{base}/step1.aspx", headers={**HEADERS, "Referer": page_url}, timeout=15)
+    r_param = session.post(f"{base}/Menu/setParam.aspx", data=param_data, headers={
+        **HEADERS, "Referer": page_url, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded"
+    }, timeout=15)
 
-        r = session.post(f"{base}/Check_Report.aspx", data={
-            "status": "Check_Report", "StrFind": car_number, "ReportNo": id_number,
-            "ReportType": report_type, "tokenCaptcha": "", "SwShow": "", "SwOrder": "2"
-        }, headers={
-            **HEADERS, "Referer": f"{base}/step1.aspx", "Origin": base,
-            "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest",
-        }, timeout=45)
+    param_resp = None
+    try:
+        param_resp = r_param.json()
+        actual_rashut = str(param_resp.get("Rashut", rashut))
+        sw_qr = str(param_resp.get("SwQR", "0"))
+        language = str(param_resp.get("language", "he"))
+    except:
+        actual_rashut = rashut
+        sw_qr = "1" if qcode else "0"
+        language = "he"
 
-        if r.status_code != 200:
-            return {"name": name, "status": "failed", "error": f"HTTP {r.status_code}"}
+    session.get(f"{base}/step1.aspx", headers={**HEADERS, "Referer": page_url}, timeout=15)
 
-        data = r.json()
-        count = data.get("C", 0)
-        itra_sum = data.get("ItraSum", "")
+    r = session.post(f"{base}/Check_Report.aspx", data={
+        "status": "Check_Report", "StrFind": car_number, "ReportNo": id_number,
+        "ReportType": report_type, "tokenCaptcha": "", "SwShow": "", "SwOrder": "2"
+    }, headers={
+        **HEADERS, "Referer": f"{base}/step1.aspx", "Origin": base,
+        "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest",
+    }, timeout=45)
 
-        # total_open_fines = system-wide open fines count for this municipality
-        # Only available for qcode municipalities (e.g. Beit Shemesh) where
-        # C is the system-wide total. For non-qcode municipalities, C is the
-        # personal count, so we don't expose it as total_open_fines.
-        total_open = count if (SHOW_TOTAL_OPEN_FINES and qcode) else None
+    if r.status_code != 200:
+        raise Exception(f"HTTP {r.status_code}")
 
-        payment_url = _build_payment_url(rashut, report_type, qcode)
+    data = r.json()
+    count = data.get("C", 0)
+    itra_sum = data.get("ItraSum", "")
 
-        if count == 0:
-            result = {"name": name, "status": "clean"}
-            if total_open is not None:
-                result["total_open_fines"] = total_open
-            return result
+    total_open = count if (SHOW_TOTAL_OPEN_FINES and qcode) else None
 
-        if itra_sum:
-            # Even when ItraSum is available, fetch step2 for detailed per-fine breakdown
-            # (location, comments, individual amounts)
-            step2_result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
-            if step2_result.get("status") == "fine" and step2_result.get("fines"):
-                result = {"name": name, "status": "fine", "count": step2_result["count"],
-                          "amount": itra_sum, "person_name": data.get("Nm", ""),
-                          "fines": step2_result["fines"], "payment_url": payment_url}
-            else:
-                result = {"name": name, "status": "fine", "count": count, "amount": itra_sum,
-                          "person_name": data.get("Nm", ""), "payment_url": payment_url}
-            if total_open is not None:
-                result["total_open_fines"] = total_open
-            return result
+    payment_url = _build_payment_url(rashut, report_type, qcode)
 
-        # Some municipalities (e.g. Beit Shemesh) return a system-wide C
-        # with empty personal fields. We must always check step2 to know
-        # if there are real fines — step2 returns actual rows only for
-        # fines that belong to this person.
-        result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
-        result["name"] = name
-        if result.get("status") == "fine":
-            result["payment_url"] = payment_url
+    if count == 0:
+        result = {"name": name, "status": "clean"}
         if total_open is not None:
             result["total_open_fines"] = total_open
         return result
 
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-        return {"name": name, "status": "failed", "error": "timeout/connection error"}
-    except requests.exceptions.JSONDecodeError:
-        return {"name": name, "status": "failed", "error": "not JSON response"}
-    except Exception as e:
-        return {"name": name, "status": "failed", "error": str(e)}
+    if itra_sum:
+        step2_result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
+        if step2_result.get("status") == "fine" and step2_result.get("fines"):
+            result = {"name": name, "status": "fine", "count": step2_result["count"],
+                      "amount": itra_sum, "person_name": data.get("Nm", ""),
+                      "fines": step2_result["fines"], "payment_url": payment_url}
+        else:
+            result = {"name": name, "status": "fine", "count": count, "amount": itra_sum,
+                      "person_name": data.get("Nm", ""), "payment_url": payment_url}
+        if total_open is not None:
+            result["total_open_fines"] = total_open
+        return result
+
+    result = _get_fines_from_step2(session, base, car_number, id_number, report_type, count, actual_rashut, sw_qr, language, param_resp)
+    result["name"] = name
+    if result.get("status") == "fine":
+        result["payment_url"] = payment_url
+    if total_open is not None:
+        result["total_open_fines"] = total_open
+    return result
 
 
 def _enrich_result(result, rashut):
@@ -359,16 +425,29 @@ def root():
 
 @app.get("/health/doh")
 def health_doh():
-    """Diagnostic: test connectivity to doh.co.il from this server."""
+    """Diagnostic: test connectivity to doh.co.il — direct and via proxy."""
     import time as _t
+    result = {"proxy_configured": bool(DOH_PROXY_URL)}
+
+    # Direct test
     start = _t.time()
     try:
         r = requests.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
-        elapsed = round(_t.time() - start, 2)
-        return {"reachable": True, "status_code": r.status_code, "elapsed_s": elapsed}
+        result["direct"] = {"reachable": True, "status_code": r.status_code, "elapsed_s": round(_t.time() - start, 2)}
     except Exception as e:
-        elapsed = round(_t.time() - start, 2)
-        return {"reachable": False, "error": str(e), "elapsed_s": elapsed}
+        result["direct"] = {"reachable": False, "error": str(e), "elapsed_s": round(_t.time() - start, 2)}
+
+    # Proxy test (if configured)
+    if DOH_PROXY_URL:
+        start = _t.time()
+        try:
+            s = _ProxySession(DOH_PROXY_URL, DOH_PROXY_SECRET)
+            r = s.get("https://www.doh.co.il/", headers=HEADERS, timeout=10)
+            result["proxy"] = {"reachable": True, "status_code": r.status_code, "elapsed_s": round(_t.time() - start, 2)}
+        except Exception as e:
+            result["proxy"] = {"reachable": False, "error": str(e), "elapsed_s": round(_t.time() - start, 2)}
+
+    return result
 
 
 # Build a lookup from rashut -> {address, phone} for enriching results
